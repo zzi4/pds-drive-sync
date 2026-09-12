@@ -1,0 +1,10 @@
+# This file contains no credential. Copy it to config.toml to override defaults.
+domain_id = "bj39311"
+spaces = ["personal", "team", "enterprise"]
+page_size = 100
+snapshot_dir = "snapshots"
+download_dir = "downloads"
+# aliyun_cli_path = ".tools/aliyun"
+timeout_seconds = 60
+read_retries = 2
+

@@ -1,1 +1,9 @@
 .worktrees/
+.tools/
+config.toml
+snapshots/
+downloads/
+__pycache__/
+*.py[cod]
+.coverage
+*.part
