@@ -10,6 +10,8 @@
 
 **Spec:** `docs/plans/2026-09-12-pds-drive-sync-design.md`
 
+**Execution override (2026-09-12):** At the user's request, implementation was reduced to a minimal core with focused configuration, credential-redaction, path-containment, pagination, and CLI-initialization tests instead of the full per-module test matrix below. The runtime behavior and security constraints remain unchanged.
+
 ## Global Constraints
 
 - Runtime must not call Codex, an Agent, or any model API.
