@@ -25,11 +25,16 @@ cd ~/Downloads/pds-drive-sync
 
 脚本会检查项目私有的 Aliyun CLI 和 PDS 插件，然后以隐藏输入方式读取一次 API Key。Key 保存到 `~/.config/pds-sync/api_key`，文件权限固定为 `600`；以后再次运行 `setup` 会自动读取，不再提示。Key 不会保存到项目源码、Git、`config.toml`、快照或日志；鉴权配置同时由 Aliyun CLI 保存在当前 Linux 用户的配置目录中。
 
-默认 PDS 域为 `bj39311`。如需修改：
+默认 PDS 域为 `bj39311`，企业云盘端点为
+`https://bj39311.api.aliyunfile.com`。如需修改：
 
 ```bash
-./pds-sync setup --domain-id <新的域ID>
+./pds-sync setup --domain-id <新的域ID> \
+  --pds-endpoint https://<新的域ID>.api.aliyunfile.com
 ```
+
+`setup` 的认证请求会自动绕过系统 HTTP/HTTPS 代理，避免部分 Go
+客户端代理链路导致的认证失败；不会修改终端或系统的代理配置。
 
 也可以复制 `config.example.toml` 为 `config.toml`，修改非敏感设置。
 
@@ -78,6 +83,7 @@ snapshots/<UTC时间>/
 
 ```toml
 domain_id = "bj39311"
+pds_endpoint = "https://bj39311.api.aliyunfile.com"
 spaces = ["personal", "team", "enterprise"]
 page_size = 100
 snapshot_dir = "snapshots"

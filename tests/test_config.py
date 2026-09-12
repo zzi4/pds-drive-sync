@@ -14,6 +14,10 @@ class ConfigTests(unittest.TestCase):
 
             self.assertEqual(settings.domain_id, "bj39311")
             self.assertEqual(
+                settings.pds_endpoint,
+                "https://bj39311.api.aliyunfile.com",
+            )
+            self.assertEqual(
                 settings.spaces,
                 ("personal", "team", "enterprise"),
             )

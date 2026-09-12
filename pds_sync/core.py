@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -33,6 +33,14 @@ CLI_DOWNLOADS = {
 }
 MIN_CLI_VERSION = (3, 3, 16)
 MIN_PDS_VERSION = (0, 7, 7)
+PROXY_ENVIRONMENT_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+)
 ITEM_PROJECTION = (
     "{items:items[].{drive_id:drive_id,file_id:file_id,"
     "parent_file_id:parent_file_id,name:name,type:type,size:size,"
@@ -143,17 +151,23 @@ class PdsCli:
         *,
         read_only: bool,
         secret_values: Sequence[str] = (),
+        bypass_proxy: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         attempts = self.read_retries + 1 if read_only else 1
         last_error = ""
         for attempt in range(attempts):
             try:
+                environment = os.environ.copy()
+                if bypass_proxy:
+                    for name in PROXY_ENVIRONMENT_KEYS:
+                        environment.pop(name, None)
                 result = self._executor(
                     list(argv),
                     capture_output=True,
                     text=True,
                     timeout=self.timeout_seconds,
                     check=False,
+                    env=environment,
                 )
             except subprocess.TimeoutExpired:
                 last_error = f"Aliyun CLI timed out after {self.timeout_seconds}s"
@@ -201,12 +215,14 @@ class PdsCli:
         read_only: bool = True,
         secret_values: Sequence[str] = (),
         expect_json: bool = True,
+        bypass_proxy: bool = False,
     ) -> Any:
         argv = build_pds_argv(self.binary, args, self.session_id)
         result = self._execute(
             argv,
             read_only=read_only,
             secret_values=secret_values,
+            bypass_proxy=bypass_proxy,
         )
         text = result.stdout.strip()
         if not expect_json:
@@ -217,12 +233,19 @@ class PdsCli:
             safe = redact(text[:500], secret_values)
             raise PdsError(f"Aliyun CLI did not return valid JSON: {safe!r}") from exc
 
-    def configure_api_key(self, domain_id: str, api_key: str) -> dict[str, Any]:
+    def configure_api_key(
+        self,
+        domain_id: str,
+        api_key: str,
+        pds_endpoint: str,
+    ) -> dict[str, Any]:
         self.pds(
             [
                 "config",
                 "--domain-id",
                 domain_id,
+                "--pds-endpoint",
+                pds_endpoint,
                 "--authentication-type",
                 "api_key",
                 "--api-key",
@@ -230,8 +253,10 @@ class PdsCli:
             ],
             read_only=False,
             secret_values=(api_key,),
+            expect_json=False,
+            bypass_proxy=True,
         )
-        result = self.pds(["get-user"])
+        result = self.pds(["get-user"], bypass_proxy=True)
         if not isinstance(result, dict):
             raise PdsError("get-user returned an unexpected response")
         return result
@@ -419,20 +444,31 @@ def inventory_drive(
     drive_id = str(drive.get("drive_id") or "")
     if not drive_id:
         raise PdsError("cannot inventory a drive without drive_id")
-    base = [
-        "search-file",
-        "--drive-id",
-        drive_id,
-        "--limit",
-        str(page_size),
-        "--recursive",
-        "true",
-        "--return-total-count",
-        "true",
-        "--cli-query",
-        ITEM_PROJECTION,
-    ]
-    items = _paginate(cli, base)
+    folders = deque(["root"])
+    visited_folders = {"root"}
+    items: list[dict[str, Any]] = []
+    while folders:
+        parent_file_id = folders.popleft()
+        page_items = _paginate(
+            cli,
+            [
+                "list-file",
+                "--drive-id",
+                drive_id,
+                "--parent-file-id",
+                parent_file_id,
+                "--limit",
+                str(page_size),
+                "--cli-query",
+                ITEM_PROJECTION,
+            ],
+        )
+        items.extend(page_items)
+        for item in page_items:
+            file_id = str(item.get("file_id") or "")
+            if item.get("type") == "folder" and file_id not in visited_folders:
+                visited_folders.add(file_id)
+                folders.append(file_id)
     normalized: list[dict[str, Any]] = []
     for item in items:
         file_id = str(item.get("file_id") or "")

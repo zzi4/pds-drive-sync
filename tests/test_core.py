@@ -1,10 +1,13 @@
 import tempfile
 import unittest
 from pathlib import Path
+import subprocess
+from unittest.mock import patch
 
 from pds_sync.core import (
     PdsError,
     build_pds_argv,
+    inventory_drive,
     list_drives,
     redact,
     safe_destination,
@@ -34,6 +37,38 @@ class CoreSafetyTests(unittest.TestCase):
         message = redact(f"authentication failed: {secret}", (secret,))
 
         self.assertEqual(message, "authentication failed: [REDACTED]")
+
+    def test_api_key_setup_uses_explicit_pds_endpoint(self):
+        calls = []
+
+        def execute(argv, **kwargs):
+            calls.append((argv, kwargs))
+            output = "success" if "config" in argv else '{"user_id":"user-1"}'
+            return subprocess.CompletedProcess(argv, 0, stdout=output, stderr="")
+
+        from pds_sync.core import PdsCli
+
+        cli = PdsCli(
+            Path("/opt/aliyun"),
+            session_id="0123456789abcdef0123456789abcdef",
+            executor=execute,
+        )
+
+        with patch.dict("os.environ", {"HTTPS_PROXY": "http://proxy.invalid:8080"}):
+            cli.configure_api_key(
+                "bj39311",
+                "FAKE_SECRET_VALUE",
+                "https://bj39311.api.aliyunfile.com",
+            )
+
+        config_argv, config_kwargs = calls[0]
+        self.assertIn("--pds-endpoint", config_argv)
+        endpoint_index = config_argv.index("--pds-endpoint")
+        self.assertEqual(
+            config_argv[endpoint_index + 1],
+            "https://bj39311.api.aliyunfile.com",
+        )
+        self.assertNotIn("HTTPS_PROXY", config_kwargs["env"])
 
     def test_cloud_path_cannot_escape_download_root(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -82,6 +117,46 @@ class CoreSafetyTests(unittest.TestCase):
         self.assertEqual(personal_calls[0].count("--marker"), 0)
         self.assertEqual(personal_calls[1].count("--marker"), 1)
         self.assertEqual(personal_calls[1][-2:], ["--marker", "next-page"])
+
+    def test_inventory_walks_root_and_nested_folders_with_list_file(self):
+        class TreeCli:
+            def __init__(self):
+                self.parents = []
+
+            def pds(self, args):
+                self.assert_list_file(args)
+                parent = args[args.index("--parent-file-id") + 1]
+                self.parents.append(parent)
+                if parent == "root":
+                    return {
+                        "items": [
+                            {"file_id": "folder-1", "name": "docs", "type": "folder"},
+                            {"file_id": "file-1", "name": "root.txt", "type": "file"},
+                        ],
+                        "next_marker": "",
+                    }
+                return {
+                    "items": [
+                        {"file_id": "file-2", "name": "nested.txt", "type": "file"}
+                    ],
+                    "next_marker": "",
+                }
+
+            def assert_list_file(self, args):
+                if args[0] != "list-file":
+                    raise AssertionError(f"unexpected command: {args}")
+
+        cli = TreeCli()
+
+        items = inventory_drive(
+            cli,
+            {"drive_id": "2", "drive_name": "DRIVEResearch", "space_type": "enterprise"},
+            100,
+        )
+
+        self.assertEqual(cli.parents, ["root", "folder-1"])
+        self.assertEqual([item["file_id"] for item in items], ["folder-1", "file-1", "file-2"])
+        self.assertTrue(all(item["drive_id"] == "2" for item in items))
 
     def test_existing_pds_plugin_does_not_require_ram_profile_configuration(self):
         class VersionCli:

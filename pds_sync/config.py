@@ -13,6 +13,7 @@ KNOWN_SPACES = frozenset({"personal", "team", "enterprise"})
 SUPPORTED_KEYS = frozenset(
     {
         "domain_id",
+        "pds_endpoint",
         "spaces",
         "page_size",
         "snapshot_dir",
@@ -32,6 +33,7 @@ class ConfigError(ValueError):
 class Settings:
     project_root: Path
     domain_id: str
+    pds_endpoint: str
     spaces: tuple[str, ...]
     page_size: int
     snapshot_dir: Path
@@ -92,6 +94,14 @@ def load_settings(
     domain_id = data.get("domain_id", DEFAULT_DOMAIN_ID)
     if not isinstance(domain_id, str) or not domain_id.strip():
         raise ConfigError("domain_id must be a non-empty string")
+    domain_id = domain_id.strip()
+
+    endpoint_value = data.get(
+        "pds_endpoint",
+        f"https://{domain_id}.api.aliyunfile.com",
+    )
+    if not isinstance(endpoint_value, str) or not endpoint_value.strip():
+        raise ConfigError("pds_endpoint must be a non-empty string")
 
     spaces_value = data.get("spaces", ["personal", "team", "enterprise"])
     if not isinstance(spaces_value, list) or not spaces_value:
@@ -114,7 +124,8 @@ def load_settings(
 
     return Settings(
         project_root=root,
-        domain_id=domain_id.strip(),
+        domain_id=domain_id,
+        pds_endpoint=endpoint_value.strip().rstrip("/"),
         spaces=tuple(dict.fromkeys(spaces_value)),
         page_size=_integer(data, "page_size", 100, minimum=1, maximum=100),
         snapshot_dir=_project_path(root, snapshot_value),

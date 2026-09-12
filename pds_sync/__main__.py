@@ -80,13 +80,14 @@ def _print_drives(drives: Sequence[dict[str, Any]]) -> None:
         )
 
 
-def _write_domain_config(domain_id: str) -> None:
+def _write_domain_config(domain_id: str, pds_endpoint: str) -> None:
     target = PROJECT_ROOT / "config.toml"
     if target.exists():
         return
     content = "\n".join(
         [
             f'domain_id = "{domain_id}"',
+            f'pds_endpoint = "{pds_endpoint}"',
             'spaces = ["personal", "team", "enterprise"]',
             "page_size = 100",
             'snapshot_dir = "snapshots"',
@@ -103,6 +104,14 @@ def _write_domain_config(domain_id: str) -> None:
 def command_setup(args: argparse.Namespace) -> int:
     settings = _settings(args.config)
     domain_id = args.domain_id or settings.domain_id
+    pds_endpoint = (
+        args.pds_endpoint
+        or (
+            f"https://{domain_id}.api.aliyunfile.com"
+            if args.domain_id
+            else settings.pds_endpoint
+        )
+    )
     binary = resolve_aliyun_cli(settings)
     if binary is None:
         if args.no_install:
@@ -121,11 +130,11 @@ def command_setup(args: argparse.Namespace) -> int:
     if not api_key:
         api_key = load_or_create_api_key(DEFAULT_KEY_FILE)
     try:
-        user_data = cli.configure_api_key(domain_id, api_key)
+        user_data = cli.configure_api_key(domain_id, api_key, pds_endpoint)
     finally:
         api_key = ""
     user = {key: user_data.get(key) for key in ("domain_id", "user_id", "nick_name")}
-    _write_domain_config(domain_id)
+    _write_domain_config(domain_id, pds_endpoint)
     _print_identity(user)
     print("初始化完成。后续运行不需要 Agent。")
     return 0
@@ -217,6 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup = subparsers.add_parser("setup", help="安装并配置 API Key")
     setup.add_argument("--config")
     setup.add_argument("--domain-id")
+    setup.add_argument("--pds-endpoint")
     setup.add_argument("--no-install", action="store_true")
     setup.set_defaults(handler=command_setup)
     for name, help_text, handler in (
