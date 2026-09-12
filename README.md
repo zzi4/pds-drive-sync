@@ -23,7 +23,7 @@ cd ~/Downloads/pds-drive-sync
 ./pds-sync setup
 ```
 
-脚本会检查项目私有的 Aliyun CLI 和 PDS 插件，然后以隐藏输入方式读取 API Key。Key 不会保存到项目源码、`config.toml`、快照或日志；鉴权配置由 Aliyun CLI 保存在当前 Linux 用户的配置目录中。
+脚本会检查项目私有的 Aliyun CLI 和 PDS 插件，然后以隐藏输入方式读取一次 API Key。Key 保存到 `~/.config/pds-sync/api_key`，文件权限固定为 `600`；以后再次运行 `setup` 会自动读取，不再提示。Key 不会保存到项目源码、Git、`config.toml`、快照或日志；鉴权配置同时由 Aliyun CLI 保存在当前 Linux 用户的配置目录中。
 
 默认 PDS 域为 `bj39311`。如需修改：
 

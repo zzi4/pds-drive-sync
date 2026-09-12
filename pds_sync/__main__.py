@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import os
 from pathlib import Path
 import sys
 from typing import Any, Sequence
 
 from .config import ConfigError, Settings, load_settings
+from .credentials import CredentialError, DEFAULT_KEY_FILE, load_or_create_api_key
 from .core import (
     PdsCli,
     PdsError,
@@ -119,9 +119,7 @@ def command_setup(args: argparse.Namespace) -> int:
     print(f"PDS 插件: {pds_version}")
     api_key = os.environ.pop("PDS_API_KEY", None)
     if not api_key:
-        api_key = getpass.getpass("PDS API Key（输入不会显示）: ").strip()
-    if not api_key:
-        raise ConfigError("API Key cannot be empty")
+        api_key = load_or_create_api_key(DEFAULT_KEY_FILE)
     try:
         user_data = cli.configure_api_key(domain_id, api_key)
     finally:
@@ -237,7 +235,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.handler(args))
-    except ConfigError as exc:
+    except (ConfigError, CredentialError) as exc:
         print(f"配置错误: {exc}", file=sys.stderr)
         return 2
     except PdsError as exc:
